@@ -1,4 +1,5 @@
 -- Charlie's Big Stick Energy: complete database setup (one file for a fresh project).
+-- Applied automatically by the Supabase GitHub integration (Deploy to production, branch main).
 --
 -- Security model
 --   * The public (anon key in the browser) can only READ the non-sensitive

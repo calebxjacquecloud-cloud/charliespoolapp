@@ -1,0 +1,224 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { MAX_PLAYERS, MIN_PLAYERS, nextPowerOfTwo } from '../../engine';
+import { enterFullscreen } from '../../components/fullscreen';
+import { Stepper, Toggle, useConfirm, useToast } from '../../components/ui';
+import type { LiveTournament } from '../../hooks/data';
+import { useHostAction } from '../../hooks/host';
+import type { Player, TournamentSettings } from '../../shared/model';
+import { formatDate, shuffle } from '../../shared/util';
+import type { useHostData } from './HostTournament';
+import { BracketPreview } from './BracketPreview';
+import { PlayerEditModal, PlayerPicker } from './PlayerPicker';
+import { TvHelpModal } from './TvHelpModal';
+
+type HostData = ReturnType<typeof useHostData>;
+
+export function Registration({ t, host, refresh }: { t: LiveTournament; host: HostData; refresh: () => Promise<void> }) {
+  const { bundle } = t;
+  const tour = bundle.tournament;
+  const { run, busy } = useHostAction();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState<Player | null>(null);
+  const [tvOpen, setTvOpen] = useState(false);
+
+  const entrants = useMemo(() => [...bundle.entrants].sort((a, b) => a.seed - b.seed), [bundle.entrants]);
+  const entered = useMemo(() => new Set(entrants.map((e) => e.player_id)), [entrants]);
+  const byId = useMemo(() => new Map(host.players.map((p) => [p.id, p])), [host.players]);
+  const n = entrants.length;
+
+  // Players who check in from their phones may be new to the roster.
+  const { reloadPlayers } = host;
+  useEffect(() => {
+    void reloadPlayers();
+  }, [n, reloadPlayers]);
+
+  const goTv = () => {
+    enterFullscreen();
+    navigate(`/tv/${tour.id}`);
+  };
+
+  const after = async (ok: unknown) => {
+    if (ok !== undefined) await refresh();
+  };
+  const setSettings = async (patch: Partial<TournamentSettings>) => after(await run('updateTournament', { id: tour.id, settings: patch }));
+  const add = async (playerId: string) => after(await run('addEntrant', { tournamentId: tour.id, playerId }));
+  const remove = async (playerId: string) => after(await run('removeEntrant', { tournamentId: tour.id, playerId }));
+  const reorder = async (ids: string[]) => after(await run('setSeeds', { tournamentId: tour.id, playerIds: ids }));
+  const move = (i: number, d: -1 | 1) => {
+    const ids = entrants.map((e) => e.player_id);
+    [ids[i], ids[i + d]] = [ids[i + d], ids[i]];
+    void reorder(ids);
+  };
+
+  const start = async () => {
+    const ok = await confirm({
+      title: `Start with ${n} players?`,
+      body: (
+        <>
+          <p>
+            {tour.settings.randomSeeding ? 'The draw will be random.' : 'Seeds are locked in the order shown.'} Bracket size {nextPowerOfTwo(n)}
+            {nextPowerOfTwo(n) > n ? ` (${nextPowerOfTwo(n) - n} bye${nextPowerOfTwo(n) - n === 1 ? '' : 's'})` : ''}.
+          </p>
+          <p>The TV switches from check-in to the bracket by itself.</p>
+        </>
+      ),
+      confirm: '🎱 Start Tournament',
+    });
+    if (!ok) return;
+    if ((await run('startTournament', { tournamentId: tour.id })) === undefined) return;
+    await refresh();
+    toast({ tone: 'ok', text: 'Tournament started! The TV now shows the bracket.' });
+  };
+
+  return (
+    <div className="space-y-5 pb-52 md:pb-36">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link to="/host" className="text-sm text-muted">
+            ← Host dashboard
+          </Link>
+          <h1 className="text-3xl font-black">{tour.name}</h1>
+          <p className="text-muted">
+            {formatDate(tour.date)} · <span className="chip bg-sky text-black">Registration</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-gold" onClick={() => setTvOpen(true)}>
+            📺 TV Mode
+          </button>
+          <button
+            className="btn-ghost text-danger"
+            onClick={async () => {
+              if (await confirm({ title: 'Delete this tournament?', body: 'Registered players stay in the player list.', confirm: 'Delete', tone: 'danger' })) {
+                if ((await run('deleteTournament', { id: tour.id })) !== undefined) navigate('/host');
+              }
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <section className="card p-4 border-sky/50 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted max-w-2xl">
+          <b className="text-ink">Players can check themselves in.</b> Put <b className="text-ink">TV Mode</b> up and they scan the QR code with their phone camera. Their
+          names appear here and on the TV automatically. You can still add or remove anyone below.
+        </p>
+        <Link to={`/t/${tour.id}/checkin`} className="btn-secondary btn-sm" target="_blank" rel="noreferrer">
+          Open check-in page
+        </Link>
+      </section>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <section className="card p-5 space-y-3">
+          <h2 className="text-xl font-black">Add players</h2>
+          <PlayerPicker players={host.players} entered={entered} onPick={add} onCreated={host.reloadPlayers} disabled={busy || n >= MAX_PLAYERS} />
+        </section>
+
+        <section className="card p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-black">
+              In tonight <span className="text-felt">({n})</span>
+            </h2>
+            {!tour.settings.randomSeeding && n > 1 && (
+              <button className="btn-secondary btn-sm" onClick={() => reorder(shuffle(entrants.map((e) => e.player_id)))}>
+                🔀 Shuffle
+              </button>
+            )}
+          </div>
+          {n === 0 && <p className="text-muted">Nobody yet. Players can scan the QR code on the TV, or add them here.</p>}
+          <ol className="divide-y divide-line">
+            {entrants.map((e, i) => {
+              const p = byId.get(e.player_id);
+              return (
+                <li key={e.player_id} className="flex items-center gap-2 py-2">
+                  <span className="w-8 text-right font-black text-faint tabular-nums">{tour.settings.randomSeeding ? '•' : i + 1}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate text-lg font-semibold">{t.name(e.player_id)}</span>
+                  </span>
+                  {!tour.settings.randomSeeding && (
+                    <>
+                      <button className="btn-ghost btn-sm w-11" disabled={i === 0 || busy} onClick={() => move(i, -1)} aria-label="Move up">
+                        ▲
+                      </button>
+                      <button className="btn-ghost btn-sm w-11" disabled={i === n - 1 || busy} onClick={() => move(i, 1)} aria-label="Move down">
+                        ▼
+                      </button>
+                    </>
+                  )}
+                  <button className="btn-ghost btn-sm" onClick={() => p && setEditing(p)} disabled={!p}>
+                    Edit
+                  </button>
+                  <button className="btn-ghost btn-sm w-11 text-danger" onClick={() => remove(e.player_id)} disabled={busy} aria-label={`Remove ${t.name(e.player_id)}`}>
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      </div>
+
+      {n >= MIN_PLAYERS && (
+        <section className="card p-5 space-y-3">
+          <h2 className="text-xl font-black">Round 1 matchups</h2>
+          {tour.settings.randomSeeding ? (
+            <p className="text-muted">
+              Random draw is on, so matchups are shuffled when you tap Start. Turn <b>Random draw</b> off below to set them yourself.
+            </p>
+          ) : (
+            <BracketPreview playerIds={entrants.map((e) => e.player_id)} name={t.name} onReorder={reorder} disabled={busy} />
+          )}
+        </section>
+      )}
+
+      <section className="card p-5 grid gap-x-8 md:grid-cols-2">
+        <div className="flex items-center justify-between py-3">
+          <span>
+            <span className="font-semibold">Pool tables</span>
+            <span className="block text-sm text-muted">Matches running at once</span>
+          </span>
+          <Stepper value={tour.settings.tables} min={1} max={8} onChange={(v) => setSettings({ tables: v })} />
+        </div>
+        <Toggle
+          label="Random draw"
+          hint={tour.settings.randomSeeding ? 'Shuffled when you tap Start' : 'Use the order above (seed 1 at top)'}
+          checked={tour.settings.randomSeeding}
+          onChange={(v) => setSettings({ randomSeeding: v })}
+        />
+        <Toggle
+          label="Grand final bracket reset"
+          hint="If the losers-bracket champ wins the final, play one more"
+          checked={tour.settings.grandFinalReset}
+          onChange={(v) => setSettings({ grandFinalReset: v })}
+        />
+      </section>
+
+      {/* Centered so Netlify's bottom-right badge never covers the button; on
+          phones the badge spans the width, so the bar also sits above it. */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg/95 backdrop-blur safe-x pt-3 pb-[max(5.5rem,env(safe-area-inset-bottom))] md:pb-5">
+        <div className="mx-auto max-w-7xl flex flex-col items-center gap-2 text-center">
+          <span className="text-muted">
+            {n < MIN_PLAYERS ? `Add ${MIN_PLAYERS - n} more to start` : `${n} players · bracket of ${nextPowerOfTwo(n)}`}
+          </span>
+          <button className="btn-primary btn-lg" onClick={start} disabled={n < MIN_PLAYERS || busy}>
+            🎱 Start Tournament
+          </button>
+        </div>
+      </div>
+
+      <TvHelpModal open={tvOpen} onClose={() => setTvOpen(false)} onStart={goTv} />
+      <PlayerEditModal
+        player={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          void host.reloadPlayers();
+        }}
+      />
+    </div>
+  );
+}

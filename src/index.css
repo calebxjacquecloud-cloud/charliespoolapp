@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+@theme {
+  /* Charlie's Big Stick Energy: deep navy with royal blue, pool-felt green for "live". */
+  --color-bg: #070d1f;
+  --color-surface: #0e1832;
+  --color-surface-2: #142244;
+  --color-surface-3: #1c2e5a;
+  --color-line: #29407a;
+  --color-ink: #f5f8ff;
+  --color-muted: #a3b2d6;
+  --color-faint: #6578a6;
+  --color-brand: #2563eb;
+  --color-brand-dark: #1d3fb0;
+  --color-felt: #22c55e;
+  --color-felt-dark: #15803d;
+  --color-gold: #fbbf24;
+  --color-ember: #fb923c;
+  --color-danger: #f87171;
+  --color-sky: #5ab8ff;
+  --font-script: "Yellowtail", cursive;
+  --font-display: "Bowlby One", "Arial Black", sans-serif;
+  --font-condensed: "Bebas Neue", "Arial Narrow", sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    min-height: 100dvh;
+    background: var(--color-bg);
+    font-family: var(--font-sans);
+    overscroll-behavior-y: none;
+  }
+  button, [role='button'], a, input, select, label {
+    touch-action: manipulation;
+  }
+  input, select, textarea {
+    font-size: 16px; /* stops iOS zooming on focus */
+  }
+  /* iOS Safari gives date inputs an intrinsic min-width that ignores w-full,
+     so they overflow narrow cards. Let them shrink like any other field. */
+  input[type='date'] {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+  }
+  input[type='date']::-webkit-date-and-time-value {
+    text-align: left;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-sky);
+    outline-offset: 2px;
+  }
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 min-h-12 font-bold text-base select-none transition active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
+}
+@utility btn-primary {
+  @apply btn bg-brand text-white;
+}
+/* "BIG STICK ENERGY" lettering: heavy white with a royal-blue outline and drop shadow. */
+@utility event-title {
+  font-family: var(--font-display);
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.95;
+  -webkit-text-stroke: 0.07em var(--color-brand);
+  paint-order: stroke fill;
+  text-shadow: 0.06em 0.07em 0 #0a1f6b;
+}
+@utility btn-secondary {
+  @apply btn bg-surface-3 text-ink border border-line;
+}
+@utility btn-ghost {
+  @apply btn bg-transparent text-ink border border-line;
+}
+@utility btn-danger {
+  @apply btn bg-danger text-black;
+}
+@utility btn-gold {
+  @apply btn bg-gold text-black;
+}
+@utility btn-lg {
+  @apply min-h-16 px-7 text-xl rounded-2xl;
+}
+@utility btn-sm {
+  @apply min-h-10 px-3 text-sm rounded-lg;
+}
+@utility card {
+  @apply rounded-2xl bg-surface border border-line;
+}
+@utility field {
+  @apply w-full rounded-xl bg-surface-2 border border-line px-4 min-h-12 text-ink placeholder:text-faint;
+}
+@utility label {
+  @apply block text-sm font-semibold text-muted mb-1;
+}
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold;
+}
+@utility safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+@utility safe-b {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+@keyframes pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.animate-pop { animation: pop 180ms ease-out; }
+@keyframes pulse-ring { 0%, 100% { box-shadow: 0 0 0 0 rgb(34 197 94 / 0.5); } 50% { box-shadow: 0 0 0 6px rgb(34 197 94 / 0); } }
+.pulse-live { animation: pulse-ring 2s infinite; }

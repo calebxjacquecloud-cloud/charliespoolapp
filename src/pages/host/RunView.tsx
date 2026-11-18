@@ -1,0 +1,528 @@
+import { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { BYE, type BracketState, type EngineEvent, type MatchState } from '../../engine';
+import { Avatar } from '../../components/Avatar';
+import { Bracket } from '../../components/Bracket';
+import { ChampionCard, StatusChip } from '../../components/TournamentBits';
+import { Modal, Stepper, Toggle, useConfirm, useToast } from '../../components/ui';
+import { enterFullscreen } from '../../components/fullscreen';
+import type { LiveTournament } from '../../hooks/data';
+import { useHostAction } from '../../hooks/host';
+import { useWakeLock } from '../../hooks/wakeLock';
+import type { PublicPlayer, TournamentSettings } from '../../shared/model';
+import { formatDate } from '../../shared/util';
+import type { useHostData } from './HostTournament';
+import { PlayerPicker } from './PlayerPicker';
+import { TvHelpModal } from './TvHelpModal';
+
+type HostData = ReturnType<typeof useHostData>;
+type Tab = 'matches' | 'bracket' | 'players';
+
+/** "Bob beat Sam" / "Bob withdrew", using player names instead of match codes. */
+export function describeEvent(e: EngineEvent, name: (id: string) => string, state?: BracketState | null) {
+  if (e.type === 'withdraw') return `${name(e.player)} withdrew`;
+  if (e.type === 'queue') {
+    const [a, b] = state?.matches[e.matchId]?.players ?? [];
+    const who = a && b ? `${name(a)} vs ${name(b)}` : 'A match';
+    return e.now ? `${who} put on the table` : `${who} moved up next`;
+  }
+  const loser = state?.matches[e.matchId]?.players.find((p) => p && p !== e.winner && p !== BYE);
+  return loser ? `${name(e.winner)} beat ${name(loser)}` : `${name(e.winner)} won`;
+}
+
+export function RunView({ t, host, refresh }: { t: LiveTournament; host: HostData; refresh: () => Promise<void> }) {
+  const { bundle, state, name } = t;
+  const tour = bundle.tournament;
+  const events = bundle.events;
+  const [tab, setTab] = useState<Tab>('matches');
+  const [matchOpen, setMatchOpen] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tvOpen, setTvOpen] = useState(false);
+  const { run, busy } = useHostAction();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  useWakeLock();
+
+  if (!state) return null;
+  const expectedEvents = events.length;
+  const onStale = () => void refresh();
+
+  const record = async (matchId: string, winner: string) => {
+    const res = await run('recordResult', { tournamentId: tour.id, matchId, winner, expectedEvents }, { onStale });
+    if (res === undefined) return;
+    await refresh();
+    toast({
+      tone: 'ok',
+      group: 'result',
+      text: describeEvent({ type: 'result', matchId, winner }, name, state),
+      action: { label: 'Undo', run: () => void undo(expectedEvents + 1, { type: 'result', matchId, winner }) },
+    });
+  };
+
+  /** Host picks the play order for a waiting match. */
+  const queue = async (matchId: string, now: boolean) => {
+    const res = await run('queueMatch', { tournamentId: tour.id, matchId, now, expectedEvents }, { onStale });
+    if (res === undefined) return;
+    await refresh();
+    toast({
+      tone: 'ok',
+      group: 'result',
+      text: describeEvent({ type: 'queue', matchId, now }, name, state),
+      action: { label: 'Undo', run: () => void undo(expectedEvents + 1, { type: 'queue', matchId, now }) },
+    });
+  };
+
+  /** Undo the last event. `known` skips the confirm (used by the toast right after recording). */
+  const undo = async (expected = expectedEvents, known?: EngineEvent) => {
+    const last = known ?? events[expected - 1];
+    if (!last) return;
+    if (!known) {
+      const ok = await confirm({ title: 'Undo last result?', body: <p>{describeEvent(last, name, state)}</p>, confirm: 'Undo', tone: 'danger' });
+      if (!ok) return;
+    }
+    if ((await run('undo', { tournamentId: tour.id, expectedEvents: expected }, { onStale })) !== undefined) {
+      await refresh();
+      toast({ tone: 'info', group: 'result', text: `Undone: ${describeEvent(last, name, state)}` });
+    }
+  };
+
+  const goTv = () => {
+    enterFullscreen();
+    navigate(`/tv/${tour.id}`);
+  };
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'matches', label: 'Matches' },
+    { id: 'bracket', label: 'Bracket' },
+    { id: 'players', label: 'Players' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <Link to="/host" className="text-sm text-muted">
+            ← Host dashboard
+          </Link>
+          <h1 className="text-2xl md:text-3xl font-black truncate">{tour.name}</h1>
+          <p className="text-muted text-sm">
+            {formatDate(tour.date)} · {bundle.entrants.length} players · {state.complete ? <span className="chip bg-gold text-black">FINAL</span> : <span className="chip bg-felt text-black">LIVE</span>}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={() => undo()} disabled={!expectedEvents || busy}>
+            ↶ Undo
+          </button>
+          <button className="btn-secondary" onClick={() => setSettingsOpen(true)}>
+            ⚙︎ Settings
+          </button>
+          <button className="btn-gold" onClick={() => setTvOpen(true)}>
+            📺 TV Mode
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-1 rounded-2xl bg-surface p-1 border border-line" role="tablist">
+        {tabs.map((x) => (
+          <button
+            key={x.id}
+            role="tab"
+            aria-selected={tab === x.id}
+            className={`flex-1 rounded-xl min-h-12 font-bold ${tab === x.id ? 'bg-surface-3 text-ink' : 'text-muted'}`}
+            onClick={() => setTab(x.id)}
+          >
+            {x.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'matches' && <MatchesTab state={state} name={name} players={bundle.players} onRecord={record} busy={busy} onOpen={setMatchOpen} />}
+      {tab === 'bracket' && (
+        <div className="card p-3 overflow-auto">
+          <Bracket state={state} name={name} mode="host" onMatch={setMatchOpen} />
+          <p className="text-xs text-muted px-2 pt-2">Tap a match to record a winner or fix a result.</p>
+        </div>
+      )}
+      {tab === 'players' && <PlayersTab t={t} host={host} refresh={refresh} />}
+
+      <MatchModal
+        matchId={matchOpen}
+        t={t}
+        onClose={() => setMatchOpen(null)}
+        onRecord={async (m, w) => {
+          setMatchOpen(null);
+          await record(m, w);
+        }}
+        onQueue={async (m, now) => {
+          setMatchOpen(null);
+          await queue(m, now);
+        }}
+        refresh={refresh}
+      />
+      <TvHelpModal open={tvOpen} onClose={() => setTvOpen(false)} onStart={goTv} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} t={t} refresh={refresh} />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- Matches tab
+
+function MatchesTab({
+  state,
+  name,
+  players,
+  onRecord,
+  busy,
+  onOpen,
+}: {
+  state: BracketState;
+  name: (id: string | null | undefined) => string;
+  players: Record<string, PublicPlayer>;
+  onRecord: (matchId: string, winner: string) => void;
+  busy: boolean;
+  onOpen: (id: string) => void;
+}) {
+  if (state.complete) return <ChampionCard state={state} name={name} />;
+  // Same information as the TV: who's on the table (tap the winner) and who's up next.
+  return (
+    <div className="space-y-6">
+      <section>
+        <h2 className="text-lg font-black uppercase tracking-widest text-felt mb-2">On Table</h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {state.onTable.map((id) => (
+            <PlayCard key={id} m={state.matches[id]} name={name} players={players} onRecord={onRecord} busy={busy} />
+          ))}
+          {state.onTable.length === 0 && <p className="text-muted">Waiting on results</p>}
+        </div>
+      </section>
+      {state.upNext.length > 0 && (
+        <section>
+          <h2 className="text-lg font-black uppercase tracking-widest text-sky mb-1">Up Next</h2>
+          <p className="text-xs text-muted mb-2">Tap a match to play it next or put it on the table now.</p>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {state.upNext.map((id) => (
+              <button
+                key={id}
+                className="rounded-xl border border-sky/40 bg-sky/10 px-4 py-3 text-lg font-black text-center leading-tight active:scale-[0.99] transition"
+                onClick={() => onOpen(id)}
+              >
+                {name(state.matches[id].players[0])} <span className="text-faint">vs</span> {name(state.matches[id].players[1])}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function PlayCard({
+  m,
+  name,
+  players,
+  onRecord,
+  busy,
+}: {
+  m: MatchState;
+  name: (id: string | null | undefined) => string;
+  players: Record<string, PublicPlayer>;
+  onRecord: (matchId: string, winner: string) => void;
+  busy: boolean;
+}) {
+  const [a, b] = m.players as string[];
+  const player = (p: string) => (
+    <button
+      className="w-full min-w-0 rounded-2xl border-2 border-line bg-surface-2 active:bg-felt active:text-black active:border-felt transition px-4 min-h-20 flex items-center gap-3 text-left disabled:opacity-50"
+      disabled={busy}
+      onClick={() => onRecord(m.id, p)}
+      aria-label={`${name(p)} wins`}
+    >
+      <Avatar player={{ id: p, avatar: players[p]?.avatar }} className="h-12 w-12" />
+      <span className="min-w-0 text-2xl md:text-3xl font-black leading-tight [overflow-wrap:anywhere]">{name(p)}</span>
+    </button>
+  );
+  return (
+    <div className="rounded-2xl border-2 border-felt/60 bg-felt/10 p-4 space-y-2">
+      {player(a)}
+      <div className="text-center text-lg font-black text-faint">VS</div>
+      {player(b)}
+      <p className="text-center text-xs text-muted pt-1">Tap the winner</p>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------- Match modal
+
+function MatchModal({
+  matchId,
+  t,
+  onClose,
+  onRecord,
+  onQueue,
+  refresh,
+}: {
+  matchId: string | null;
+  t: LiveTournament;
+  onClose: () => void;
+  onRecord: (matchId: string, winner: string) => void;
+  onQueue: (matchId: string, now: boolean) => void;
+  refresh: () => Promise<void>;
+}) {
+  const { state, name, bundle } = t;
+  const { run, busy } = useHostAction();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const m = matchId && state ? state.matches[matchId] : null;
+  if (!m || !state) return <Modal open={false} onClose={onClose} title="" children={null} />;
+  const [a, b] = m.players as string[];
+
+  const correct = async (winner: string) => {
+    const preview = await run<{ dropped: EngineEvent[]; expectedEvents: number }>('previewCorrection', { tournamentId: bundle.tournament.id, matchId: m.id, winner });
+    if (!preview) return;
+    // Only results matter here; dropped play-order picks aren't worth listing.
+    const lost = preview.dropped.filter((e) => e.type !== 'queue');
+    const ok = await confirm({
+      title: `Change the winner to ${name(winner)}?`,
+      tone: 'danger',
+      confirm: 'Change result',
+      body: lost.length ? (
+        <>
+          <p className="text-gold font-bold">This also erases {lost.length} later result{lost.length === 1 ? '' : 's'} that no longer make sense:</p>
+          <ul className="list-disc pl-5">
+            {lost.map((e, i) => (
+              <li key={i}>{describeEvent(e, (id) => name(id), state)}</li>
+            ))}
+          </ul>
+          <p>Those matches will need to be recorded again.</p>
+        </>
+      ) : (
+        <p>No later results are affected; the bracket updates automatically.</p>
+      ),
+    });
+    if (!ok) return;
+    const res = await run('correctResult', { tournamentId: bundle.tournament.id, matchId: m.id, winner, expectedEvents: preview.expectedEvents }, { onStale: () => void refresh() });
+    if (res !== undefined) {
+      await refresh();
+      onClose();
+      toast({ tone: 'ok', group: 'result', text: `Corrected: ${name(winner)} beat ${name(m.players.find((p) => p !== winner))}` });
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`${name(a)} vs ${name(b)}`}>
+      {m.status === 'ready' && m.table === null && (
+        <div className="space-y-2 mb-5">
+          <p className="text-muted">Play order</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button className="btn-primary" disabled={busy || state.upNext[0] === m.id} onClick={() => onQueue(m.id, false)}>
+              {state.upNext[0] === m.id ? 'Already next' : 'Play this next'}
+            </button>
+            <button className="btn-secondary" disabled={busy} onClick={() => onQueue(m.id, true)}>
+              Put on the table now
+            </button>
+          </div>
+          <p className="text-xs text-muted">
+            {state.onTable.length ? 'Putting it on the table now sends the current match back to the front of the line.' : ''}
+          </p>
+        </div>
+      )}
+      {m.status === 'ready' && (
+        <div className="space-y-3">
+          <p className="text-muted">{m.table === null ? 'Or, if it was already played: who won?' : 'Who won?'}</p>
+          {[a, b].map((p) => (
+            <button key={p} className="btn-secondary btn-lg w-full" onClick={() => onRecord(m.id, p)} disabled={busy}>
+              {name(p)}
+            </button>
+          ))}
+        </div>
+      )}
+      {m.status === 'done' && m.kind === 'normal' && (
+        <div className="space-y-3">
+          <p>
+            <span className="font-black text-felt">{name(m.winner)}</span> beat <span className="font-bold">{name(m.loser)}</span>.
+          </p>
+          <p className="text-muted text-sm">Recorded the wrong winner? Fix it here. Later matches are recalculated safely.</p>
+          <button className="btn-danger w-full" onClick={() => correct(m.loser as string)} disabled={busy || m.loser === BYE}>
+            Change winner to {name(m.loser)}
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ------------------------------------------------------------- Players tab
+
+function PlayersTab({ t, host, refresh }: { t: LiveTournament; host: HostData; refresh: () => Promise<void> }) {
+  const { state, name, bundle } = t;
+  const tour = bundle.tournament;
+  const { run, busy } = useHostAction();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const entered = useMemo(() => new Set(bundle.entrants.map((e) => e.player_id)), [bundle.entrants]);
+  if (!state) return null;
+  const rows = [...bundle.entrants].sort((a, b) => {
+    const pa = state.players[a.player_id];
+    const pb = state.players[b.player_id];
+    const rank = (s: typeof pa) => (s.status === 'champion' ? 0 : s.status === 'winners' ? 1 : s.status === 'losers' ? 2 : 3);
+    return rank(pa) - rank(pb) || (pa.place ?? 99) - (pb.place ?? 99) || name(a.player_id).localeCompare(name(b.player_id));
+  });
+
+  const withdraw = async (pid: string) => {
+    const ok = await confirm({
+      title: `Withdraw ${name(pid)}?`,
+      body: <p>Their remaining matches become forfeits (walkovers). Walkovers don't count as wins or losses in anyone's stats. You can undo this.</p>,
+      confirm: 'Withdraw',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    if ((await run('withdraw', { tournamentId: tour.id, playerId: pid, expectedEvents: bundle.events.length }, { onStale: () => void refresh() })) !== undefined) {
+      await refresh();
+      toast({ tone: 'info', group: 'result', text: `${name(pid)} withdrew` });
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {!state.complete && (
+        <section className="card p-5 space-y-3">
+          <h2 className="text-lg font-black">Late entry</h2>
+          <p className="text-sm text-muted">Allowed while there's an open bye slot whose player hasn't played their next match yet.</p>
+          <PlayerPicker
+            players={host.players}
+            entered={entered}
+            placeholder="Add a late player"
+            onCreated={host.reloadPlayers}
+            disabled={busy}
+            onPick={async (playerId) => {
+              const res = await run('addEntrant', { tournamentId: tour.id, playerId, expectedEvents: bundle.events.length }, { onStale: () => void refresh() });
+              if (res !== undefined) {
+                await refresh();
+                toast({ tone: 'ok', group: 'result', text: 'Added to the bracket' });
+              }
+            }}
+          />
+        </section>
+      )}
+      <section className="card divide-y divide-line">
+        {rows.map((e) => {
+          const ps = state.players[e.player_id];
+          return (
+            <div key={e.player_id} className="p-4 flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-48">
+                <div className="text-lg font-bold">{name(e.player_id)}</div>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                  <StatusChip ps={ps} />
+                  <span>
+                    {ps.wins}-{ps.playedLosses} tonight
+                  </span>
+                </div>
+              </div>
+              <Link className="btn-ghost btn-sm" to={`/t/${tour.id}/p/${e.player_id}`}>
+                View
+              </Link>
+              {!state.complete && !ps.withdrawn && ps.status !== 'eliminated' && (
+                <button className="btn-ghost btn-sm text-danger" onClick={() => withdraw(e.player_id)} disabled={busy}>
+                  Withdraw
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------- Settings modal
+
+function SettingsModal({ open, onClose, t, refresh }: { open: boolean; onClose: () => void; t: LiveTournament; refresh: () => Promise<void> }) {
+  const tour = t.bundle.tournament;
+  const { run } = useHostAction();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const [name, setName] = useState(tour.name);
+  const set = async (patch: Partial<TournamentSettings>) => {
+    if ((await run('updateTournament', { id: tour.id, settings: patch })) !== undefined) await refresh();
+  };
+  const gf1Done = t.state?.matches.GF1.status === 'done';
+  return (
+    <Modal open={open} onClose={onClose} title="Tournament settings">
+      <div className="space-y-2">
+        <label className="block">
+          <span className="label">Name</span>
+          <div className="flex gap-2">
+            <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
+            <button className="btn-secondary" onClick={async () => (await run('updateTournament', { id: tour.id, name })) !== undefined && refresh()}>
+              Save
+            </button>
+          </div>
+        </label>
+        <div className="flex items-center justify-between py-3">
+          <span className="font-semibold">Pool tables</span>
+          <Stepper value={tour.settings.tables} min={1} max={8} onChange={(v) => set({ tables: v })} />
+        </div>
+        <Toggle
+          label="Grand final bracket reset"
+          hint={gf1Done ? 'Locked: the grand final has been played' : 'Second final if the losers-bracket champ wins'}
+          checked={tour.settings.grandFinalReset}
+          onChange={(v) => !gf1Done && set({ grandFinalReset: v })}
+        />
+        {tour.status === 'live' && (
+          <div className="pt-4 border-t border-line space-y-2">
+            <button
+              className="btn-secondary w-full"
+              onClick={async () => {
+                const events = t.bundle.events;
+                const results = events.filter((e) => e.type === 'result').length;
+                const withdrawals = events.length - results;
+                const lost = [results && `${results} recorded result${results === 1 ? '' : 's'}`, withdrawals && `${withdrawals} withdrawal${withdrawals === 1 ? '' : 's'}`]
+                  .filter(Boolean)
+                  .join(' and ');
+                const ok = await confirm({
+                  title: 'Undo start and go back to registration?',
+                  body: (
+                    <>
+                      <p>Everyone stays signed up. You can change the random draw, reorder or add/remove players, then tap Start again.</p>
+                      {lost ? <p className="text-gold font-bold">This erases {lost}.</p> : <p>No results have been recorded yet, so nothing is lost.</p>}
+                    </>
+                  ),
+                  confirm: 'Back to registration',
+                  tone: lost ? 'danger' : 'primary',
+                });
+                if (!ok) return;
+                if ((await run('reopenRegistration', { tournamentId: tour.id, expectedEvents: events.length }, { onStale: () => void refresh() })) !== undefined) {
+                  onClose();
+                  await refresh();
+                }
+              }}
+            >
+              ↩︎ Undo start (back to registration)
+            </button>
+            <p className="text-xs text-muted">Change the draw or the player list, then start again.</p>
+          </div>
+        )}
+        <div className="pt-4 border-t border-line">
+          <button
+            className="btn-ghost text-danger w-full"
+            onClick={async () => {
+              if (
+                await confirm({
+                  title: 'Delete this tournament?',
+                  body: 'All results from tonight will be erased from history and stats. This cannot be undone.',
+                  confirm: 'Delete forever',
+                  tone: 'danger',
+                })
+              ) {
+                if ((await run('deleteTournament', { id: tour.id })) !== undefined) navigate('/host');
+              }
+            }}
+          >
+            Delete tournament
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

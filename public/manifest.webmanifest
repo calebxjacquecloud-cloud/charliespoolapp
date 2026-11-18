@@ -1,0 +1,29 @@
+{
+  "name": "Charlie's Big Stick Energy",
+  "short_name": "Big Stick Energy",
+  "description": "Live double-elimination bracket for Big Stick Energy pool night at Charlie's Denver.",
+  "start_url": "/host",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070d1f",
+  "theme_color": "#070d1f",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

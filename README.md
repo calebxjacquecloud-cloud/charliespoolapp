@@ -7,7 +7,7 @@ Last Wednesday of every month · Registration 6:30pm · Tournament 7:00pm · $5 
 - **Host dashboard** on the bar's iPad: watch check-ins arrive, start the bracket, tap winners, choose which match plays next.
 - **TV mode**: a live check-in board before the start, then the full bracket with **On Table** / **Up Next** and a QR code players scan to see their stats.
 - **Player pages** on phones: next opponent, matches until they're up, tonight's and all-time stats, and their picture (pixel character, pool ball, or photo).
-- **Double elimination** with byes, grand-final bracket reset, undo, corrections, withdrawals, late entries and "undo start".
+- **Single or double elimination** (chosen per tournament, single by default) with byes, grand-final bracket reset, undo, corrections, withdrawals, late entries and "undo start".
 - **Stats over time**: leaderboard (all-time and by season), titles, win %, streaks, month-by-month history.
 
 It runs entirely in the cloud (Netlify + Supabase); nothing needs to stay running on anyone's computer. This app has its own database: no players or results are shared with any other bar.
@@ -88,6 +88,8 @@ On a computer with Node 22: clone the repo, `npm install`, copy `.env.example` t
 
 ## Bracket rules
 
+- **Format:** pick **Single elimination** (default: one loss and you're out) or **Double elimination** in the tournament settings before you tap Start. To change it after starting, use **Undo start**.
+- **Single elimination:** one bracket, rounds named Quarterfinals / Semifinals / Final; no third-place match.
 - **Double elimination.** First loss → losers bracket; second loss → out. Everyone plays at least two matches.
 - **4 to 64 players.** The bracket fills 4/8/16/32/64 spots; extra spots are **byes** (a bye is never a win, loss or match played). Byes go to the top seeds.
 - **Losers-bracket crossover** keeps players who drop down from immediately replaying someone from their own section where possible.
@@ -96,7 +98,7 @@ On a computer with Node 22: clone the repo, `npm install`, copy `.env.example` t
 - **Corrections** recalculate everything after them; results that no longer make sense are listed and erased after you confirm.
 - **Withdrawals** turn the player's remaining matches into forfeits (not counted in anyone's stats).
 - **Late entry** fills an open bye spot only if that spot's player hasn't played their next match yet; otherwise the app explains why not.
-- **Placements:** 1st, 2nd, then by the losers round you went out in (3rd, 4th, 5th–6th, 7th–8th…).
+- **Placements:** 1st, 2nd, then by the round you went out in (single: 3rd–4th, 5th–8th…; double: by losers round, 3rd, 4th, 5th–6th…).
 
 ---
 

@@ -5,6 +5,7 @@ import { similarNames } from './names';
 import { seedDemoData } from './seed';
 import { Service } from './service';
 import { computeStats } from './stats';
+import { engineSettings } from './model';
 
 function setup() {
   const store = new MemoryStore();
@@ -218,8 +219,57 @@ describe('service', () => {
     // Each tournament's stored matches replay to the stored champion.
     for (const t of data.tournaments) {
       const entrants = data.entrants.filter((e) => e.tournament_id === t.id).sort((a, b) => a.seed - b.seed);
-      const state = computeBracket({ seeds: entrants.map((e) => e.player_id), events: await store.listEvents(t.id), settings: { grandFinalReset: true, tables: 1 } });
+      const state = computeBracket({ seeds: entrants.map((e) => e.player_id), events: await store.listEvents(t.id), settings: engineSettings(t.settings) });
       expect(state.champion).toBe(t.champion_id);
     }
+  });
+});
+
+describe('bracket format', () => {
+  const playToEnd = async (service: Service, id: string) => {
+    let n = 0;
+    for (;;) {
+      const state = await service.sync(id);
+      if (state.complete) return { state, n };
+      const m = state.onTable[0];
+      await service.recordResult({ tournamentId: id, matchId: m, winner: state.matches[m].players[0] as string, expectedEvents: n++ });
+    }
+  };
+
+  it('new tournaments default to single elimination', async () => {
+    const { service } = setup();
+    const t = await service.createTournament({ date: '2026-11-25' });
+    expect(t.settings.format).toBe('single');
+  });
+
+  it('single elimination: 8 players finish in 7 matches', async () => {
+    const { service, store } = setup();
+    const { t } = await tournamentWith(service, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+    await service.startTournament({ tournamentId: t.id });
+    const { state, n } = await playToEnd(service, t.id);
+    expect(n).toBe(7);
+    expect(state.structure.format).toBe('single');
+    expect((await store.getTournament(t.id))!.status).toBe('complete');
+  });
+
+  it('double elimination is still available', async () => {
+    const { service } = setup();
+    const { t } = await tournamentWith(service, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+    await service.updateTournament({ id: t.id, settings: { format: 'double' } });
+    await service.startTournament({ tournamentId: t.id });
+    const { state, n } = await playToEnd(service, t.id);
+    expect(state.structure.format).toBe('double');
+    expect(n).toBeGreaterThanOrEqual(14);
+  });
+
+  it('format locks once started and unlocks after Undo start', async () => {
+    const { service, store } = setup();
+    const { t } = await tournamentWith(service, ['A', 'B', 'C', 'D']);
+    await service.startTournament({ tournamentId: t.id });
+    await expect(service.updateTournament({ id: t.id, settings: { format: 'double' } })).rejects.toThrow(/before the tournament starts/);
+    await service.updateTournament({ id: t.id, settings: { tables: 2 } });
+    await service.reopenRegistration({ tournamentId: t.id, expectedEvents: 0 });
+    await service.updateTournament({ id: t.id, settings: { format: 'double' } });
+    expect((await store.getTournament(t.id))!.settings.format).toBe('double');
   });
 });

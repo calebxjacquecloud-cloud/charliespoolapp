@@ -14,7 +14,7 @@ interface Props {
 const SLOT_H = { host: 96, public: 92, tv: 112 } as const;
 const BOX_W = { host: 'w-52', public: 'w-44', tv: 'w-60' } as const;
 
-/** Full double-elimination bracket: winners on top (with the grand final), losers below. */
+/** Full bracket: winners on top (with the grand final), losers below. Single elimination shows one bracket. */
 export function Bracket({ state, name, mode, onMatch, highlight }: Props) {
   const { structure, matches } = state;
   const rounds = (b: 'W' | 'L', count: number) =>
@@ -22,7 +22,8 @@ export function Bracket({ state, name, mode, onMatch, highlight }: Props) {
   const wRounds = rounds('W', structure.winnersRounds);
   const lRounds = rounds('L', structure.losersRounds);
   const slot = SLOT_H[mode];
-  const showReset = state.settings.grandFinalReset && (matches.GF2.active || matches.GF1.status !== 'done');
+  const single = structure.format === 'single';
+  const showReset = !single && state.settings.grandFinalReset && (matches.GF2.active || matches.GF1.status !== 'done');
 
   const column = (defs: typeof wRounds[number], height: number, key: string) => (
     <div key={key} className="flex flex-col shrink-0">
@@ -44,10 +45,10 @@ export function Bracket({ state, name, mode, onMatch, highlight }: Props) {
 
   return (
     <div className="inline-flex flex-col gap-6 p-2">
-      <Section title="Winners Bracket" tone="felt" mode={mode}>
+      <Section title={single ? 'Bracket' : 'Winners Bracket'} tone="felt" mode={mode}>
         <div className="flex gap-4 items-start">
           {wRounds.map((defs, i) => column(defs, wHeight, `w${i}`))}
-          <div className="flex flex-col shrink-0">
+          {!single && <div className="flex flex-col shrink-0">
             <div className={`h-8 text-center font-black uppercase tracking-wider text-gold ${mode === 'tv' ? 'text-sm' : 'text-[11px]'}`}>
               Grand Final
             </div>
@@ -57,7 +58,7 @@ export function Bracket({ state, name, mode, onMatch, highlight }: Props) {
                 <MatchBox m={matches.GF2} state={state} name={name} mode={mode} onMatch={onMatch} highlight={highlight} ifNeeded={!matches.GF2.active} />
               )}
             </div>
-          </div>
+          </div>}
         </div>
       </Section>
       {lRounds.length > 0 && (

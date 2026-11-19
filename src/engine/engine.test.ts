@@ -597,3 +597,102 @@ describe('tables and queue', () => {
     expect(matchesUntilUp(s, 'p1')).toBeNull(); // waiting on W1-2
   });
 });
+
+describe('single elimination', () => {
+  const single = { ...settings, format: 'single' as const };
+
+  it('has only the main bracket: n-1 slots, no losers bracket or grand final', () => {
+    for (const size of [4, 8, 16, 32, 64]) {
+      const s = buildStructure(size, 'single');
+      expect(s.matches.length).toBe(size - 1);
+      expect(s.losersRounds).toBe(0);
+      expect(s.matches.every((m) => m.bracket === 'W')).toBe(true);
+    }
+  });
+
+  it('every player but the champion loses exactly once; real matches = players - 1', () => {
+    for (const n of [4, 5, 7, 8, 9, 13, 16, 23, 32, 41, 64]) {
+      for (let trial = 0; trial < 5; trial++) {
+        const { state } = playOut({ seeds: players(n), events: [], settings: single }, pickRandom(rng(n * 100 + trial)));
+        expect(state.champion).toBeTruthy();
+        expect(realMatches(state).length).toBe(n - 1);
+        for (const p of Object.values(state.players)) {
+          expect(p.losses).toBe(p.id === state.champion ? 0 : 1);
+          expect(p.status).toBe(p.id === state.champion ? 'champion' : 'eliminated');
+        }
+      }
+    }
+  });
+
+  it('places 1st, 2nd, then by the round you went out in', () => {
+    const { state } = playOut({ seeds: players(8), events: [], settings: single }, pickFavorite);
+    expect(state.champion).toBe('p1');
+    const place = (id: string) => state.players[id].place;
+    expect(place('p1')).toBe(1);
+    expect(place('p2')).toBe(2);
+    expect([place('p3'), place('p4')]).toEqual([3, 3]);
+    for (const id of ['p5', 'p6', 'p7', 'p8']) expect(place(id)).toBe(5);
+  });
+
+  it('a loser is out immediately and never appears in a later match', () => {
+    const { state, events } = playOut({ seeds: players(8), events: [], settings: single }, pickRandom(rng(7)));
+    const outAt = new Map<string, number>();
+    events.forEach((e, i) => {
+      if (e.type !== 'result') return;
+      const m = state.matches[e.matchId];
+      outAt.set(m.loser as string, i);
+    });
+    events.forEach((e, i) => {
+      if (e.type !== 'result') return;
+      for (const p of state.matches[e.matchId].players) {
+        const out = outAt.get(p as string);
+        if (out !== undefined) expect(i).toBeLessThanOrEqual(out);
+      }
+    });
+  });
+
+  it('byes go to the top seeds and never count as matches', () => {
+    const state = computeBracket({ seeds: players(5), events: [], settings: single });
+    const byes = Object.values(state.matches).filter((m) => m.kind === 'bye');
+    expect(byes.map((m) => m.winner).sort()).toEqual(['p1', 'p2', 'p3']);
+    expect(Object.values(state.players).every((p) => p.losses === 0)).toBe(true);
+  });
+
+  it('withdrawal forfeits the next match; undo/correction replays cleanly', () => {
+    const input: EngineInput = { seeds: players(8), events: [], settings: single };
+    let state = computeBracket(input);
+    const first = state.onTable[0];
+    const [a, b] = state.matches[first].players as string[];
+    const events: EngineEvent[] = [{ type: 'withdraw', player: b }];
+    state = computeBracket({ ...input, events });
+    expect(state.matches[first].kind).toBe('walkover');
+    expect(state.matches[first].winner).toBe(a);
+    expect(validateEvent({ ...input, events }, { type: 'withdraw', player: b })).toBeTruthy();
+
+    const played = playOut({ seeds: players(8), events: [], settings: single }, pickFavorite);
+    const fix = correctResult({ ...input, events: played.events }, 'W1-1', 'p8');
+    const after = computeBracket({ ...input, events: fix.events });
+    expect(after.matches['W1-1'].winner).toBe('p8');
+    expect(after.invalidEvents).toEqual([]);
+  });
+
+  it('labels rounds Final / Semifinals / Quarterfinals', async () => {
+    const { roundLabel } = await import('./structure');
+    const s = buildStructure(16, 'single');
+    expect(roundLabel(s.byId['W4-1'], s)).toBe('Final');
+    expect(roundLabel(s.byId['W3-1'], s)).toBe('Semifinals');
+    expect(roundLabel(s.byId['W2-1'], s)).toBe('Quarterfinals');
+    expect(roundLabel(s.byId['W1-1'], s)).toBe('Round 1');
+  });
+
+  it('late entry can take an open bye before it is played through', () => {
+    const input: EngineInput = { seeds: players(5), events: [], settings: single };
+    expect(canAddLateEntrant(input, 'late')).toBeNull();
+  });
+
+  it('missing format still means double elimination (older tournaments)', () => {
+    const state = computeBracket({ seeds: players(8), events: [], settings });
+    expect(state.structure.format).toBe('double');
+    expect(state.structure.losersRounds).toBeGreaterThan(0);
+  });
+});

@@ -12,6 +12,7 @@ import {
 } from '../engine';
 import {
   DEFAULT_SETTINGS,
+  engineSettings,
   type Entrant,
   type MatchRow,
   type Player,
@@ -116,6 +117,9 @@ export class Service {
       patch.date = input.date;
     }
     if (input.name !== undefined) patch.name = cleanName(input.name) || defaultTournamentName(patch.date ?? t.date);
+    if (input.settings?.format !== undefined && t.status !== 'draft' && (input.settings.format ?? 'double') !== (t.settings.format ?? 'double')) {
+      throw new AppError('The format can only be changed before the tournament starts. Use Undo start first.');
+    }
     if (input.settings) patch.settings = sanitizeSettings({ ...t.settings, ...input.settings });
     await this.store.updateTournament(t.id, { ...patch, updated_at: this.now() });
     if (t.status !== 'draft' && patch.settings) await this.sync(t.id);
@@ -282,7 +286,7 @@ export class Service {
     return {
       seeds: [...list].sort((a, b) => a.seed - b.seed).map((e) => e.player_id),
       events,
-      settings: { grandFinalReset: t.settings.grandFinalReset, tables: t.settings.tables },
+      settings: engineSettings(t.settings),
     };
   }
 
@@ -407,6 +411,7 @@ export class Service {
 function sanitizeSettings(s: TournamentSettings): TournamentSettings {
   const tables = Math.round(Number(s.tables));
   return {
+    format: s.format === 'single' ? 'single' : 'double',
     tables: Number.isFinite(tables) ? Math.min(16, Math.max(1, tables)) : 1,
     grandFinalReset: !!s.grandFinalReset,
     randomSeeding: !!s.randomSeeding,

@@ -245,3 +245,29 @@ export function Stepper({ value, onChange, min, max }: { value: number; onChange
     </div>
   );
 }
+
+/** Single / double elimination choice: two large buttons, one selected. */
+export function FormatPicker({ value, onChange, disabled }: { value: 'single' | 'double'; onChange: (v: 'single' | 'double') => void; disabled?: boolean }) {
+  const options = [
+    { v: 'single' as const, label: 'Single elimination', hint: 'One loss and you’re out' },
+    { v: 'double' as const, label: 'Double elimination', hint: 'Out after two losses' },
+  ];
+  return (
+    <div role="radiogroup" aria-label="Bracket format" className="grid grid-cols-2 gap-2">
+      {options.map((o) => (
+        <button
+          key={o.v}
+          type="button"
+          role="radio"
+          aria-checked={value === o.v}
+          disabled={disabled}
+          onClick={() => value !== o.v && onChange(o.v)}
+          className={`rounded-xl border-2 px-3 py-3 text-left min-h-14 disabled:opacity-60 ${value === o.v ? 'border-brand bg-brand/20' : 'border-line bg-surface-2'}`}
+        >
+          <span className="block font-bold">{o.label}</span>
+          <span className="block text-sm text-muted">{o.hint}</span>
+        </button>
+      ))}
+    </div>
+  );
+}

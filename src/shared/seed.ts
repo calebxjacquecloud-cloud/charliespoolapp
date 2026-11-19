@@ -1,6 +1,7 @@
 import { computeBracket } from '../engine';
 import type { Service } from './service';
 import type { Store } from './store';
+import { engineSettings } from './model';
 import { BRAND } from '../brand';
 
 const NAMES = [
@@ -72,7 +73,7 @@ export async function seedDemoData(service: Service, store: Store, opts: { today
       state = computeBracket({
         seeds: (await store.listEntrants(t.id)).sort((x, y) => x.seed - y.seed).map((e) => e.player_id),
         events,
-        settings: { grandFinalReset: true, tables: t.settings.tables },
+        settings: engineSettings(t.settings),
       });
     }
   }

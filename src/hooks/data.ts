@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BYE, computeBracket, type BracketState } from '../engine';
 import { backend, type ConnectionStatus } from '../data';
-import type { TournamentBundle } from '../shared/model';
+import { engineSettings, type TournamentBundle } from '../shared/model';
 
 /**
  * Loads data and keeps it fresh: refetches on realtime changes and retries
@@ -63,7 +63,7 @@ export function useTournament(id: string | undefined) {
         ? computeBracket({
             seeds,
             events: b.events,
-            settings: { grandFinalReset: b.tournament.settings.grandFinalReset, tables: b.tournament.settings.tables },
+            settings: engineSettings(b.tournament.settings),
           })
         : null;
     const name = (pid: string | null | undefined) => {

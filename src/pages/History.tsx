@@ -22,7 +22,9 @@ export function History() {
               <Link to={`/t/${t.id}`} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <span>
                   <span className="block font-bold">{formatDate(t.date)}</span>
-                  <span className="text-sm text-muted">{count.get(t.id) ?? 0} players</span>
+                  <span className="text-sm text-muted">
+                    {count.get(t.id) ?? 0} players · {(t.settings?.format ?? 'double') === 'single' ? 'Single' : 'Double'} elimination
+                  </span>
                 </span>
                 <span className="font-black">🏆 {name.get(t.champion_id ?? '') ?? '–'}</span>
               </Link>

@@ -34,8 +34,9 @@ export interface MatchDef {
 
 export interface BracketStructure {
   size: number; // power of 2, >= 4
+  format: BracketFormat;
   winnersRounds: number; // k = log2(size)
-  losersRounds: number; // 2(k-1)
+  losersRounds: number; // 2(k-1); 0 for single elimination
   matches: MatchDef[]; // sorted by `order`
   byId: Record<string, MatchDef>;
 }
@@ -50,7 +51,12 @@ export type EngineEvent =
    */
   | { type: 'queue'; matchId: string; now: boolean };
 
+/** Double elimination (two losses to be out) or single elimination (one loss). */
+export type BracketFormat = 'double' | 'single';
+
 export interface EngineSettings {
+  /** Bracket format; missing means double elimination (older tournaments). */
+  format?: BracketFormat;
   /** Play a second grand final if the losers-bracket champion wins the first. */
   grandFinalReset: boolean;
   /** Number of pool tables available for the "On the table now" queue. */

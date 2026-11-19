@@ -17,18 +17,18 @@ export function PlayerPage() {
   return <PlayerPanel tournamentId={id!} playerId={playerId!} />;
 }
 
-function statusCopy(ps: PlayerState) {
+function statusCopy(ps: PlayerState, single: boolean) {
   switch (ps.status) {
     case 'champion':
       return { title: '🏆 Champion!', sub: 'You won tonight. Drinks on you?', tone: 'bg-gold text-black' };
     case 'winners':
-      return { title: 'Still alive', sub: 'Undefeated: winners bracket', tone: 'bg-felt text-black' };
+      return { title: 'Still alive', sub: single ? 'Undefeated: win and keep going' : 'Undefeated: winners bracket', tone: 'bg-felt text-black' };
     case 'losers':
       return { title: 'Still alive', sub: 'Losers bracket: one more loss and you’re out', tone: 'bg-ember text-black' };
     default:
       return {
         title: ps.place ? `Finished ${ordinal(ps.place)}` : 'Eliminated',
-        sub: ps.withdrawn ? 'Withdrew from tonight' : 'Two losses: thanks for playing!',
+        sub: ps.withdrawn ? 'Withdrew from tonight' : single ? 'Thanks for playing!' : 'Two losses: thanks for playing!',
         tone: 'bg-surface-3 text-ink',
       };
   }
@@ -93,7 +93,7 @@ export function PlayerPanel({ tournamentId, playerId }: { tournamentId: string; 
   }
 
   const ps = state.players[playerId];
-  const copy = statusCopy(ps);
+  const copy = statusCopy(ps, state.structure.format === 'single');
   const m = ps.currentMatch ? state.matches[ps.currentMatch] : null;
   const until = matchesUntilUp(state, playerId);
   const opponent = m ? m.players.find((p) => p !== playerId) : null;

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MAX_PLAYERS, MIN_PLAYERS, nextPowerOfTwo } from '../../engine';
 import { enterFullscreen } from '../../components/fullscreen';
-import { Stepper, Toggle, useConfirm, useToast } from '../../components/ui';
+import { FormatPicker, Stepper, Toggle, useConfirm, useToast } from '../../components/ui';
 import type { LiveTournament } from '../../hooks/data';
 import { useHostAction } from '../../hooks/host';
 import type { Player, TournamentSettings } from '../../shared/model';
@@ -176,6 +176,10 @@ export function Registration({ t, host, refresh }: { t: LiveTournament; host: Ho
       )}
 
       <section className="card p-5 grid gap-x-8 md:grid-cols-2">
+        <div className="md:col-span-2 pb-3 space-y-2">
+          <span className="font-semibold">Format</span>
+          <FormatPicker value={tour.settings.format ?? 'double'} onChange={(v) => setSettings({ format: v })} />
+        </div>
         <div className="flex items-center justify-between py-3">
           <span>
             <span className="font-semibold">Pool tables</span>
@@ -189,12 +193,14 @@ export function Registration({ t, host, refresh }: { t: LiveTournament; host: Ho
           checked={tour.settings.randomSeeding}
           onChange={(v) => setSettings({ randomSeeding: v })}
         />
-        <Toggle
-          label="Grand final bracket reset"
-          hint="If the losers-bracket champ wins the final, play one more"
-          checked={tour.settings.grandFinalReset}
-          onChange={(v) => setSettings({ grandFinalReset: v })}
-        />
+        {(tour.settings.format ?? 'double') === 'double' && (
+          <Toggle
+            label="Grand final bracket reset"
+            hint="If the losers-bracket champ wins the final, play one more"
+            checked={tour.settings.grandFinalReset}
+            onChange={(v) => setSettings({ grandFinalReset: v })}
+          />
+        )}
       </section>
 
       {/* Centered so Netlify's bottom-right badge never covers the button; on

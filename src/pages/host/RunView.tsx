@@ -413,7 +413,7 @@ function PlayersTab({ t, host, refresh }: { t: LiveTournament; host: HostData; r
               <div className="flex-1 min-w-48">
                 <div className="text-lg font-bold">{name(e.player_id)}</div>
                 <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
-                  <StatusChip ps={ps} />
+                  <StatusChip ps={ps} single={state.structure.format === 'single'} />
                   <span>
                     {ps.wins}-{ps.playedLosses} tonight
                   </span>
@@ -446,7 +446,8 @@ function SettingsModal({ open, onClose, t, refresh }: { open: boolean; onClose: 
   const set = async (patch: Partial<TournamentSettings>) => {
     if ((await run('updateTournament', { id: tour.id, settings: patch })) !== undefined) await refresh();
   };
-  const gf1Done = t.state?.matches.GF1.status === 'done';
+  const single = (tour.settings.format ?? 'double') === 'single';
+  const gf1Done = t.state?.matches.GF1?.status === 'done';
   return (
     <Modal open={open} onClose={onClose} title="Tournament settings">
       <div className="space-y-2">
@@ -463,12 +464,18 @@ function SettingsModal({ open, onClose, t, refresh }: { open: boolean; onClose: 
           <span className="font-semibold">Pool tables</span>
           <Stepper value={tour.settings.tables} min={1} max={8} onChange={(v) => set({ tables: v })} />
         </div>
-        <Toggle
-          label="Grand final bracket reset"
-          hint={gf1Done ? 'Locked: the grand final has been played' : 'Second final if the losers-bracket champ wins'}
-          checked={tour.settings.grandFinalReset}
-          onChange={(v) => !gf1Done && set({ grandFinalReset: v })}
-        />
+        <div className="flex items-center justify-between py-3">
+          <span className="font-semibold">Format</span>
+          <span className="text-muted">{single ? 'Single elimination' : 'Double elimination'}</span>
+        </div>
+        {!single && (
+          <Toggle
+            label="Grand final bracket reset"
+            hint={gf1Done ? 'Locked: the grand final has been played' : 'Second final if the losers-bracket champ wins'}
+            checked={tour.settings.grandFinalReset}
+            onChange={(v) => !gf1Done && set({ grandFinalReset: v })}
+          />
+        )}
         {tour.status === 'live' && (
           <div className="pt-4 border-t border-line space-y-2">
             <button

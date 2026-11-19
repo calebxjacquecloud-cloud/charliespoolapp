@@ -1,4 +1,4 @@
-import type { EngineEvent } from '../engine';
+import type { BracketFormat, EngineEvent, EngineSettings } from '../engine';
 
 /** Rows as stored in the database (see supabase/migrations). */
 
@@ -16,16 +16,24 @@ export interface Player {
 export type PublicPlayer = Pick<Player, 'id' | 'display_name' | 'avatar'>;
 
 export interface TournamentSettings {
+  /** Single or double elimination; stored tournaments without it were double. */
+  format?: BracketFormat;
   tables: number;
   grandFinalReset: boolean;
   randomSeeding: boolean;
 }
 
 export const DEFAULT_SETTINGS: TournamentSettings = {
+  format: 'single',
   tables: 1,
   grandFinalReset: true,
   randomSeeding: true,
 };
+
+/** What the bracket engine needs from a tournament's settings. */
+export function engineSettings(s: TournamentSettings): EngineSettings {
+  return { format: s.format ?? 'double', grandFinalReset: s.grandFinalReset, tables: s.tables };
+}
 
 export type TournamentStatus = 'draft' | 'live' | 'complete';
 

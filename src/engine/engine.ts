@@ -1,7 +1,9 @@
 import { buildStructure, nextPowerOfTwo } from './structure';
 import {
   BYE,
+  type BracketFormat,
   type BracketState,
+  type EngineSettings,
   type BracketStructure,
   type EngineEvent,
   type EngineInput,
@@ -13,20 +15,27 @@ import {
   type Source,
 } from './types';
 
-const structureCache = new Map<number, BracketStructure>();
-export function structureFor(playerCount: number): BracketStructure {
+const structureCache = new Map<string, BracketStructure>();
+export function structureFor(playerCount: number, format: BracketFormat = 'double'): BracketStructure {
   const size = nextPowerOfTwo(playerCount);
-  let s = structureCache.get(size);
+  const key = `${format}:${size}`;
+  let s = structureCache.get(key);
   if (!s) {
-    s = buildStructure(size);
-    structureCache.set(size, s);
+    s = buildStructure(size, format);
+    structureCache.set(key, s);
   }
   return s;
+}
+
+/** Losses that knock a player out: 1 in single elimination, 2 in double. */
+export function lossesToBeOut(settings: Pick<EngineSettings, 'format'>): number {
+  return settings.format === 'single' ? 1 : 2;
 }
 
 /** Mutable working state used while replaying events. */
 class Replay {
   readonly structure: BracketStructure;
+  readonly single: boolean;
   readonly matches: Record<string, MatchState> = {};
   readonly withdrawn = new Set<PlayerId>();
   /** Events applied so far; stamps when each match becomes ready. */
@@ -38,7 +47,8 @@ class Replay {
   readonly tables: (string | undefined)[];
 
   constructor(readonly input: EngineInput) {
-    this.structure = structureFor(input.seeds.length);
+    this.structure = structureFor(input.seeds.length, input.settings.format ?? 'double');
+    this.single = this.structure.format === 'single';
     for (const def of this.structure.matches) {
       this.matches[def.id] = {
         def, id: def.id, players: [null, null], status: 'pending', kind: null,
@@ -109,6 +119,7 @@ class Replay {
 
   /** GF2 is only played if the losers-bracket champion won GF1 and resets are on. */
   private gf2Needed(): boolean {
+    if (this.single) return false;
     const gf1 = this.matches.GF1;
     return (
       this.input.settings.grandFinalReset &&
@@ -119,6 +130,7 @@ class Replay {
   }
 
   private updateGrandFinal() {
+    if (this.single) return;
     const gf2 = this.matches.GF2;
     const needed = this.gf2Needed();
     if (needed && !gf2.active) {
@@ -159,7 +171,17 @@ class Replay {
       .sort((a, b) => b.boost - a.boost || a.readyAt! - b.readyAt! || a.def.order - b.def.order);
   }
 
+  /** The match that decides the title (GF2 when a reset is being played). */
+  finalMatch(): MatchState {
+    if (this.single) return this.matches[`W${this.structure.winnersRounds}-1`];
+    return this.matches.GF2.active ? this.matches.GF2 : this.matches.GF1;
+  }
+
   champion(): PlayerId | null {
+    if (this.single) {
+      const f = this.finalMatch();
+      return f.status === 'done' ? (f.winner as PlayerId) : null;
+    }
     const gf1 = this.matches.GF1;
     const gf2 = this.matches.GF2;
     if (gf1.status !== 'done') return null;
@@ -207,7 +229,7 @@ class Replay {
     } else if (event.type === 'withdraw') {
       if (!this.input.seeds.includes(event.player)) return 'Unknown player';
       if (this.withdrawn.has(event.player)) return 'Player already withdrawn';
-      if (this.lossesOf(event.player) >= 2) return 'Player is already eliminated';
+      if (this.lossesOf(event.player) >= lossesToBeOut(this.input.settings)) return 'Player is already eliminated';
       this.step++;
       this.withdrawn.add(event.player);
     } else {
@@ -241,6 +263,7 @@ export function computeBracket(input: EngineInput): BracketState {
 
   const champion = r.champion();
   const matches = r.matches;
+  const out = lossesToBeOut(input.settings);
   const players: Record<PlayerId, PlayerState> = {};
   input.seeds.forEach((id, i) => {
     players[id] = {
@@ -256,7 +279,7 @@ export function computeBracket(input: EngineInput): BracketState {
       const loser = m.loser !== BYE ? players[m.loser as PlayerId] : undefined;
       if (loser) {
         loser.losses++;
-        if (loser.losses >= 2) loser.eliminatedIn = m.id;
+        if (loser.losses >= out) loser.eliminatedIn = m.id;
       }
       if (m.kind === 'normal') {
         players[m.winner as PlayerId].wins++;
@@ -271,18 +294,18 @@ export function computeBracket(input: EngineInput): BracketState {
 
   // Players waiting on an earlier match result: find the next match they feed into.
   for (const p of Object.values(players)) {
-    if (p.losses >= 2 || p.currentMatch || champion === p.id) continue;
+    if (p.losses >= out || p.currentMatch || champion === p.id) continue;
     p.currentMatch = nextMatchFor(r, p.id);
   }
 
   for (const p of Object.values(players)) {
     if (champion === p.id) p.status = 'champion';
-    else if (p.losses >= 2 || (champion && p.losses >= 1)) p.status = 'eliminated';
+    else if (p.losses >= out || (champion && p.losses >= 1)) p.status = 'eliminated';
     else p.status = p.losses === 0 ? 'winners' : 'losers';
     if (p.status === 'eliminated' && !p.eliminatedIn) {
       // Runner-up who only lost once (won GF1 as WB champ is impossible here),
       // i.e. the WB champion losing GF1 with reset disabled.
-      p.eliminatedIn = matches.GF2.active ? 'GF2' : 'GF1';
+      p.eliminatedIn = r.finalMatch().id;
     }
   }
 
@@ -328,8 +351,20 @@ function assignPlacements(r: Replay, players: Record<PlayerId, PlayerState>, cha
     nextPlace += fresh.length;
   };
   placeGroup([champion]);
-  const final = r.matches.GF2.active ? r.matches.GF2 : r.matches.GF1;
+  const final = r.finalMatch();
   if (final.loser && final.loser !== BYE) placeGroup([final.loser]);
+  if (r.single) {
+    // Single elimination: by the round you went out in (semis = 3rd-4th, and so on).
+    for (let round = r.structure.winnersRounds - 1; round >= 1; round--) {
+      placeGroup(
+        r.structure.matches
+          .filter((d) => d.bracket === 'W' && d.round === round)
+          .map((d) => r.matches[d.id].loser)
+          .filter((p): p is PlayerId => !!p && p !== BYE),
+      );
+    }
+    return;
+  }
   for (let round = r.structure.losersRounds; round >= 1; round--) {
     const losers = r.structure.matches
       .filter((d) => d.bracket === 'L' && d.round === round)

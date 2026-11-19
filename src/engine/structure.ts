@@ -1,4 +1,4 @@
-import type { BracketStructure, MatchDef, Source } from './types';
+import type { BracketFormat, BracketStructure, MatchDef, Source } from './types';
 
 export const MIN_PLAYERS = 4;
 export const MAX_PLAYERS = 64;
@@ -46,12 +46,13 @@ const w = (round: number, index: number) => `W${round}-${index}`;
 const l = (round: number, index: number) => `L${round}-${index}`;
 
 /** Builds every match (and where its players come from) for a bracket size. */
-export function buildStructure(size: number): BracketStructure {
+export function buildStructure(size: number, format: BracketFormat = 'double'): BracketStructure {
   if (size < 4 || (size & (size - 1)) !== 0) {
     throw new Error(`Bracket size must be a power of two >= 4 (got ${size})`);
   }
   const k = Math.log2(size);
-  const lRounds = 2 * (k - 1);
+  const single = format === 'single';
+  const lRounds = single ? 0 : 2 * (k - 1);
   const defs: Omit<MatchDef, 'order'>[] = [];
 
   // Winners bracket.
@@ -90,11 +91,12 @@ export function buildStructure(size: number): BracketStructure {
   }
 
   // Grand final(s). GF2 (the bracket reset) has the same two players as GF1.
-  defs.push({
+  // Single elimination has neither: the winners final is the final.
+  if (!single) defs.push({
     id: 'GF1', bracket: 'GF', round: 1, index: 1,
     sources: [{ kind: 'winner', match: w(k, 1) }, { kind: 'winner', match: l(lRounds, 1) }],
   });
-  defs.push({
+  if (!single) defs.push({
     id: 'GF2', bracket: 'GF', round: 2, index: 1,
     sources: [{ kind: 'winner', match: w(k, 1) }, { kind: 'winner', match: l(lRounds, 1) }],
   });
@@ -107,7 +109,7 @@ export function buildStructure(size: number): BracketStructure {
     roundOrder.push(`W${r}`, `L${2 * r - 2}`);
     if (2 * r - 1 <= lRounds) roundOrder.push(`L${2 * r - 1}`);
   }
-  roundOrder.push('GF1', 'GF2');
+  if (!single) roundOrder.push('GF1', 'GF2');
   const rank = (d: Omit<MatchDef, 'order'>) => {
     const key = d.bracket === 'GF' ? d.id : `${d.bracket}${d.round}`;
     return roundOrder.indexOf(key) * 1000 + d.index;
@@ -118,6 +120,7 @@ export function buildStructure(size: number): BracketStructure {
 
   return {
     size,
+    format,
     winnersRounds: k,
     losersRounds: lRounds,
     matches,
@@ -128,6 +131,13 @@ export function buildStructure(size: number): BracketStructure {
 /** Human-friendly round names. */
 export function roundLabel(def: Pick<MatchDef, 'bracket' | 'round'>, structure: BracketStructure): string {
   if (def.bracket === 'GF') return def.round === 1 ? 'Grand Final' : 'Grand Final Reset';
+  if (def.bracket === 'W' && structure.format === 'single') {
+    const fromEnd = structure.winnersRounds - def.round;
+    if (fromEnd === 0) return 'Final';
+    if (fromEnd === 1) return 'Semifinals';
+    if (fromEnd === 2) return 'Quarterfinals';
+    return `Round ${def.round}`;
+  }
   if (def.bracket === 'W') {
     const fromEnd = structure.winnersRounds - def.round;
     if (fromEnd === 0) return 'Winners Final';

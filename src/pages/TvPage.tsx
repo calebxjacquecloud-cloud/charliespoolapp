@@ -114,7 +114,7 @@ export function TvPage({ tournamentId }: { tournamentId?: string }) {
               </FitToScreen>
             </div>
           ) : (
-            <FitToScreen className="min-h-0 h-full p-4" maxScale={1.8}>
+            <FitToScreen className="min-h-0 h-full p-4 pb-12" maxScale={1.8}>
               <Bracket state={state} name={name} mode="tv" />
             </FitToScreen>
           )}

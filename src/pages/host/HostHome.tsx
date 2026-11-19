@@ -6,7 +6,6 @@ import { useLive } from '../../hooks/data';
 import { HostCtx, useHostAction } from '../../hooks/host';
 import type { Season, Tournament } from '../../shared/model';
 import { formatDate, todayAtBar } from '../../shared/util';
-import { BRAND, TIMES } from '../../brand';
 
 export function HostHome() {
   const navigate = useNavigate();
@@ -29,7 +28,6 @@ export function HostHome() {
       <section className="card p-6 flex flex-col md:flex-row md:items-end gap-4 justify-between">
         <div>
           <h1 className="text-3xl font-black">Host dashboard</h1>
-          <p className="text-muted mt-1">{BRAND.schedule} · {TIMES}</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
           <label className="block min-w-0">

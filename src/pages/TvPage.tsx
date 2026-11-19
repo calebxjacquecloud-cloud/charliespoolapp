@@ -13,7 +13,7 @@ import { useWakeLock } from '../hooks/wakeLock';
 import type { BracketState } from '../engine';
 import type { PublicPlayer } from '../shared/model';
 import { formatDate } from '../shared/util';
-import { BRAND, TIMES } from '../brand';
+import { BRAND } from '../brand';
 
 /**
  * /tv: the permanent TV address. Always shows the current tournament (live
@@ -32,8 +32,6 @@ export function TvCurrent() {
           <Badge className="h-36 w-36" />
           <Wordmark className="text-9xl" />
           <EventTitle className="text-8xl" />
-          <p className="text-3xl text-muted">{BRAND.schedule} · {TIMES}</p>
-          <p className="text-2xl text-sky font-semibold">{BRAND.details}</p>
         </div>
       </div>
     );
@@ -166,7 +164,6 @@ function CheckInBoard({ names, url }: { names: { id: string; name: string }[]; u
           <h2 className="text-5xl lg:text-6xl font-black">Checked in tonight</h2>
           <span className="text-5xl lg:text-6xl font-black text-felt tabular-nums">{n}</span>
         </div>
-        <p className="text-xl lg:text-2xl text-muted mt-3">{TIMES} · Double elimination</p>
         <div className="mt-6 lg:mt-8 min-h-0 flex-1 overflow-hidden">
           {n === 0 ? (
             <p className="text-4xl text-muted mt-10">Be the first to check in.</p>

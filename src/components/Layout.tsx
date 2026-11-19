@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { ConnectionPill, DemoBanner, Logo } from './ui';
-import { BRAND, TIMES } from '../brand';
+import { BRAND } from '../brand';
 
 const nav = [
   { to: '/', label: 'Live', end: true },
@@ -39,7 +39,7 @@ export function Layout() {
         <Outlet />
       </main>
       <footer className="text-center text-xs text-faint py-6 safe-x">
-        {BRAND.bar} {BRAND.city} · {BRAND.address} · {BRAND.event}: {BRAND.schedule}, {TIMES.toLowerCase()}
+        {BRAND.bar} {BRAND.city} · {BRAND.address}
       </footer>
     </div>
   );

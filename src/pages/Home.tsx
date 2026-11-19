@@ -5,7 +5,7 @@ import { useLive } from '../hooks/data';
 import { useStats } from '../hooks/stats';
 import { formatPct, sortStats } from '../shared/stats';
 import { formatDate } from '../shared/util';
-import { BRAND, TIMES } from '../brand';
+import { BRAND } from '../brand';
 
 export function Home() {
   const tournaments = useLive(() => backend.listTournaments(), '*');
@@ -28,8 +28,6 @@ export function Home() {
           </div>
         </div>
         <EventTitle className="text-4xl sm:text-6xl" />
-        <p className="text-sky font-semibold">{BRAND.details}</p>
-        <p className="text-lg text-muted">{BRAND.schedule} · {TIMES}</p>
       </section>
 
       {tournaments.loading && <Spinner />}
@@ -67,7 +65,6 @@ export function Home() {
       {!tournaments.loading && live.length === 0 && drafts.length === 0 && (
         <section className="card p-6 text-center">
           <h2 className="text-2xl font-black">No tournament running right now</h2>
-          <p className="text-muted mt-1">{BRAND.schedule}, {TIMES.toLowerCase()}.</p>
         </section>
       )}
 

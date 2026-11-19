@@ -49,7 +49,7 @@ You need three accounts: **GitHub** (holds this code), **Supabase** (the databas
 1. **https://supabase.com** → **New project**. Name it `charlies-big-stick-energy`, generate a database password (save it), region **West US**. Wait for it to finish.
 2. **Create the tables, one way (not both):**
    - **Automatic:** **Project Settings → Integrations → GitHub** → connect the `charliespoolapp` repository. Working directory `.`, turn on **Deploy to production**, production branch `main`. Supabase then applies [`supabase/migrations`](supabase/migrations) whenever `main` changes. (Already-pushed files may need one new push to `main` before the first run happens; ask the developer.)
-   - **Manual:** **SQL Editor → New query**, paste all of [`supabase/migrations/20261118000000_init.sql`](supabase/migrations/20261118000000_init.sql), **Run**.
+   - **Manual:** **SQL Editor → New query**, paste each file in [`supabase/migrations`](supabase/migrations) in name order (oldest first) and **Run** each one.
 3. Check **Table Editor**: you should see `players`, `tournaments`, `entrants`, `tournament_events`, `matches`, `seasons`, `host_login_attempts`, `checkin_attempts`.
 4. Copy three values from **Project Settings → API Keys** (and **Data API** for the URL):
    - **Project URL**: exactly `https://xxxxxxxx.supabase.co` (no path after it). The ID is also in your dashboard address: `supabase.com/dashboard/project/xxxxxxxx`.
@@ -116,7 +116,7 @@ On a computer with Node 22: clone the repo, `npm install`, copy `.env.example` t
 | Blue "Demo mode" banner on the live site | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` missing → add, redeploy. |
 | "Setup problem: SUPABASE_URL …" | Use the full `https://xxxx.supabase.co` (a bare project ID also works); not a dashboard link. |
 | "Wrong PIN" | Re-create `HOST_PIN` with digits only, all scopes, same value everywhere, secret box unticked; redeploy. After 8 wrong tries, wait 15 minutes. |
-| Setup check shows a table ❌ | Run the SQL file in Supabase → SQL Editor (or check the GitHub integration's deploy log). |
+| Setup check shows a table ❌ or "permission denied" | Run the SQL files in Supabase → SQL Editor, in order (or check the GitHub integration's deploy log). |
 | "Photo uploads aren't set up yet" | The photo bucket wasn't created; characters and balls still work. Re-run the SQL file. |
 | Yellow "Reconnecting…" | Wi-Fi dropped. Nothing is lost; it catches up by itself. |
 
@@ -141,5 +141,5 @@ src/shared/        service (all host/public actions), store interface, stats, av
 src/data/          SupabaseBackend (production) / DemoBackend (no config)
 src/pages/         public pages, check-in, TV, player view, host/
 netlify/functions/ api, host-login, checkin, avatar, health, keep-alive (daily)
-supabase/          config.toml + migrations (one setup file)
+supabase/          config.toml + migrations (setup + table permissions)
 ```

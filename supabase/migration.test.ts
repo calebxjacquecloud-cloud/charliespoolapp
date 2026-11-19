@@ -30,8 +30,8 @@ beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
     create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
-    grant usage on schema public to anon, authenticated, service_role;
-    alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+    -- Like a new Supabase project: no table access granted to the API roles by default.
+    revoke all on schema public from public;
     create publication supabase_realtime;`);
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
     await db.exec(readFileSync(join(dir, f), 'utf8'));
